@@ -126,6 +126,7 @@ set(config_module_list
 	#modules/gnd_pos_control
 	modules/mc_att_control
 	modules/mc_pos_control
+	modules/mc_att_advance
 	modules/vtol_att_control
 
 	#
