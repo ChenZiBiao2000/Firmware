@@ -79,8 +79,9 @@ MulticopterAttitudeAdvanceControl::sensor_correction_poll()
 Vector3f
 MulticopterAttitudeAdvanceControl::get_rates_pid()
 {
-	Vector3f rates_pid(pid_control.PID_Y.Control_Output_e.u_x,pid_control.PID_Y.Control_Output_e.u_y,pid_control.PID_Y.Control_Output_e.u_z);
-  return rates_pid;
+	Vector3f rates_pid(pid_control.PID_Y.Control_Output_e.u_x, pid_control.PID_Y.Control_Output_e.u_y,
+			   pid_control.PID_Y.Control_Output_e.u_z);
+	return rates_pid;
 }
 
 void
@@ -99,7 +100,7 @@ MulticopterAttitudeAdvanceControl::actuator_controls_publish()
 	if (_actuator_controls_pub != nullptr) {
 		orb_publish(ORB_ID(actuator_controls_0), _actuator_controls_pub, &_actuators);
 
-	} else if(_actuator_controls_pub == nullptr) {
+	} else if (_actuator_controls_pub == nullptr) {
 		_actuator_controls_pub = orb_advertise(ORB_ID(actuator_controls_0), &_actuators);
 	}
 }
@@ -107,31 +108,32 @@ MulticopterAttitudeAdvanceControl::actuator_controls_publish()
 void
 MulticopterAttitudeAdvanceControl::att_and_rates_conrtol()
 {
-		att_rates_input_control(_v_att,_v_att_sp);
-		_thrust_sp = _v_att_sp.thrust;
-		pid_control.step();
-		actuator_controls_publish();
+	att_rates_input_control(_v_att, _v_att_sp);
+	_thrust_sp = _v_att_sp.thrust;
+	pid_control.step();
+	actuator_controls_publish();
 }
 
 void
-MulticopterAttitudeAdvanceControl::att_rates_input_control(vehicle_attitude_s vehicle_attitude,vehicle_attitude_setpoint_s att_sp)
+MulticopterAttitudeAdvanceControl::att_rates_input_control(vehicle_attitude_s vehicle_attitude,
+		vehicle_attitude_setpoint_s att_sp)
 {
 	//assignment the PID_U
-  //assignment the att
+	//assignment the att
 	matrix::Eulerf att_euler(matrix::Quatf(vehicle_attitude.q));
 	pid_control.PID_U.States_i.phi_rad = att_euler.phi();
 	pid_control.PID_U.States_i.theta_rad = att_euler.theta();
-  pid_control.PID_U.States_i.psi_rad = att_euler.psi();
+	pid_control.PID_U.States_i.psi_rad = att_euler.psi();
 
 	//assignment the att rates
-  pid_control.PID_U.States_i.p_radDs = vehicle_attitude.rollspeed;
-  pid_control.PID_U.States_i.q_radDs = vehicle_attitude.pitchspeed;
-  pid_control.PID_U.States_i.r_radDs = vehicle_attitude.yawspeed;
+	pid_control.PID_U.States_i.p_radDs = vehicle_attitude.rollspeed;
+	pid_control.PID_U.States_i.q_radDs = vehicle_attitude.pitchspeed;
+	pid_control.PID_U.States_i.r_radDs = vehicle_attitude.yawspeed;
 
 	//assignment the att setpointss
-  pid_control.PID_U.Reference_e.phi_ref_rad = att_sp.roll_body;
-  pid_control.PID_U.Reference_e.theta_ref_rad = att_sp.pitch_body;
-  pid_control.PID_U.Reference_e.psi_ref_rad = att_sp.yaw_body;
+	pid_control.PID_U.Reference_e.phi_ref_rad = att_sp.roll_body;
+	pid_control.PID_U.Reference_e.theta_ref_rad = att_sp.pitch_body;
+	pid_control.PID_U.Reference_e.psi_ref_rad = att_sp.yaw_body;
 }
 
 void
@@ -152,12 +154,15 @@ MulticopterAttitudeAdvanceControl::run()
 	}
 
 	_gyro_count = math::min(orb_group_count(ORB_ID(sensor_gyro)), MAX_GYRO_COUNT);
+
 	if (_gyro_count == 0) {
 		_gyro_count = 1;
 	}
+
 	for (unsigned s = 0; s < _gyro_count; s++) {
 		_sensor_gyro_sub[s] = orb_subscribe_multi(ORB_ID(sensor_gyro), s);
 	}
+
 	/* wakeup source: gyro data from sensor selected by the sensor app */
 	px4_pollfd_struct_t poll_fds = {};
 	poll_fds.events = POLLIN;
@@ -185,37 +190,39 @@ MulticopterAttitudeAdvanceControl::run()
 			continue;
 		}
 
-			perf_begin(_loop_perf);
+		perf_begin(_loop_perf);
 
-			/* run controller on gyro changes */
-			if (poll_fds.revents & POLLIN) {
+		/* run controller on gyro changes */
+		if (poll_fds.revents & POLLIN) {
 
-				const hrt_abstime now = hrt_absolute_time();
-				float dt = (now - last_run) / 1e6f;
-				last_run = now;
+			const hrt_abstime now = hrt_absolute_time();
+			float dt = (now - last_run) / 1e6f;
+			last_run = now;
 
-				/* guard against too small (< 2ms) and too large (> 20ms) dt's */
-				if (dt < 0.002f) {
-					dt = 0.002f;
+			/* guard against too small (< 2ms) and too large (> 20ms) dt's */
+			if (dt < 0.002f) {
+				dt = 0.002f;
 
-				} else if (dt > 0.02f) {
-					dt = 0.02f;
-				}
-
-				/* copy gyro data */
-				orb_copy(ORB_ID(sensor_gyro), _sensor_gyro_sub[_selected_gyro], &_sensor_gyro);
-
-				// update the data
-				vehicle_attitude_poll();
-				sensor_correction_poll();
-				att_and_rates_conrtol();
+			} else if (dt > 0.02f) {
+				dt = 0.02f;
 			}
 
-			perf_end(_loop_perf);
-    }
+			/* copy gyro data */
+			orb_copy(ORB_ID(sensor_gyro), _sensor_gyro_sub[_selected_gyro], &_sensor_gyro);
+
+			// update the data
+			vehicle_attitude_poll();
+			sensor_correction_poll();
+			vehicle_attitude_setpoint_poll();
+			att_and_rates_conrtol();
+		}
+
+		perf_end(_loop_perf);
+	}
 
 	orb_unsubscribe(_v_att_sub);
 	orb_unsubscribe(_v_att_sp_sub);
+
 	for (unsigned s = 0; s < _gyro_count; s++) {
 		orb_unsubscribe(_sensor_gyro_sub[s]);
 	}
@@ -224,12 +231,12 @@ MulticopterAttitudeAdvanceControl::run()
 int
 MulticopterAttitudeAdvanceControl::task_spawn(int argc, char *argv[])
 {
-    _task_id = px4_task_spawn_cmd("mc_att_advance",
-					   SCHED_DEFAULT,
-					   SCHED_PRIORITY_ATTITUDE_CONTROL,
-					   1700,
-					   (px4_main_t)&run_trampoline,
-					   (char *const *)argv);
+	_task_id = px4_task_spawn_cmd("mc_att_advance",
+				      SCHED_DEFAULT,
+				      SCHED_PRIORITY_ATTITUDE_CONTROL,
+				      1700,
+				      (px4_main_t)&run_trampoline,
+				      (char *const *)argv);
 
 	if (_task_id < 0) {
 		_task_id = -1;

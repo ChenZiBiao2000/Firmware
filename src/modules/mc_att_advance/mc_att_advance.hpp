@@ -28,9 +28,9 @@ extern "C" __EXPORT int mc_att_advance_main(int argc, char *argv[]);
 class MulticopterAttitudeAdvanceControl : public ModuleBase<MulticopterAttitudeAdvanceControl>
 {
 public:
-    MulticopterAttitudeAdvanceControl();
+	MulticopterAttitudeAdvanceControl();
 
-    ~MulticopterAttitudeAdvanceControl() {};
+	~MulticopterAttitudeAdvanceControl() {};
 
 	/** @see ModuleBase */
 	static int task_spawn(int argc, char *argv[]);
@@ -38,29 +38,29 @@ public:
 	/** @see ModuleBase */
 	static MulticopterAttitudeAdvanceControl *instantiate(int argc, char *argv[]);
 
-    /** @see ModuleBase */
+	/** @see ModuleBase */
 	static int custom_command(int argc, char *argv[]);
 
 	/** @see ModuleBase */
 	static int print_usage(const char *reason = nullptr);
 
-    /** @see ModuleBase::run() */
+	/** @see ModuleBase::run() */
 	void run() override;
 
 private:
 
-    /*
-     *Check and update the topic
-     */
-    void		vehicle_attitude_poll();
+	/*
+	 *Check and update the topic
+	 */
+	void		vehicle_attitude_poll();
 	void		vehicle_attitude_setpoint_poll();
 	void		sensor_correction_poll();
 	void		att_and_rates_conrtol();
 	void		actuator_controls_publish();
 	matrix::Vector3f 	get_rates_pid();
-	void		att_rates_input_control(vehicle_attitude_s vehicle_attitude,vehicle_attitude_setpoint_s att_sp);
+	void		att_rates_input_control(vehicle_attitude_s vehicle_attitude, vehicle_attitude_setpoint_s att_sp);
 
-    int		_v_att_sub{-1};			/**< vehicle attitude subscription */
+	int		_v_att_sub{-1};			/**< vehicle attitude subscription */
 	int		_v_att_sp_sub{-1};		/**< vehicle attitude setpoint subscription */
 	int		_sensor_correction_sub{-1};	/**< sensor thermal correction subscription */
 	int		_sensor_gyro_sub[MAX_GYRO_COUNT];	/**< gyro data subscription */
@@ -71,13 +71,13 @@ private:
 
 	float _thrust_sp;				/**< thrust setpoint */
 
-    struct vehicle_attitude_s		_v_att {};		/**< vehicle attitude */
+	struct vehicle_attitude_s		_v_att {};		/**< vehicle attitude */
 	struct vehicle_attitude_setpoint_s	_v_att_sp {};		/**< vehicle attitude setpoint */
 	struct sensor_correction_s		_sensor_correction {};	/**< sensor thermal corrections */
 	struct sensor_gyro_s			_sensor_gyro {};	/**< gyro data before thermal correctons and ekf bias estimates are applied */
 	struct actuator_controls_s		_actuators {};		/**< actuator controls */
 
-    perf_counter_t	_loop_perf;			/**< loop performance counter */
+	perf_counter_t	_loop_perf;			/**< loop performance counter */
 
 	PIDModelClass pid_control {};
 };
