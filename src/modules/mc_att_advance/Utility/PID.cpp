@@ -27,11 +27,11 @@ const Control_Output PID_rtZControl_Output = {
 
 // Exported block parameters
 Model_Param_T Model_Param = {
-	0.15F,
-	0.15F,
-	0.15F,
-	0.1F,
-	0.1F,
+	6.0F,
+	6.0F,
+	2.8F,
+	0.2F,
+	0.2F,
 	0.2F,
 	0.05F,
 	0.05F,
