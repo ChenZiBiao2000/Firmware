@@ -190,7 +190,12 @@ MulticopterAttitudeAdvanceControl::run()
 	pid_control.initialize();
 
 	while (!should_exit()) {
-
+		// make the choice of the controller, the value is not updated in the air
+		int32_t att_controller_choice;
+		param_get(param_find("SYS_MC_ATT"), &att_controller_choice);
+		if (att_controller_choice != 1 && !_v_control_mode.flag_armed) {
+			return;
+		}
 		poll_fds.fd = _sensor_gyro_sub[_selected_gyro];
 		/* wait for up to 100ms for data */
 		int pret = px4_poll(&poll_fds, 1, 100);
