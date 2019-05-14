@@ -49,6 +49,19 @@ MulticopterAttitudeAdvanceControl::vehicle_attitude_poll()
 }
 
 void
+MulticopterAttitudeAdvanceControl::vehicle_control_mode_poll()
+{
+	bool updated;
+
+	/* Check if vehicle control mode has changed */
+	orb_check(_v_control_mode_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(vehicle_control_mode), _v_control_mode_sub, &_v_control_mode);
+	}
+}
+
+void
 MulticopterAttitudeAdvanceControl::vehicle_attitude_setpoint_poll()
 {
 	/* check if there is a new setpoint */
@@ -120,6 +133,11 @@ MulticopterAttitudeAdvanceControl::att_rates_input_control(vehicle_attitude_s ve
 {
 	//assignment the PID_U
 	//assignment the att
+	if (!_v_control_mode.flag_armed) {
+		pid_control.PID_U.Command_m.reset = 1;
+	} else {
+		pid_control.PID_U.Command_m.reset = 0;
+	}
 	matrix::Eulerf att_euler(matrix::Quatf(vehicle_attitude.q));
 	pid_control.PID_U.States_i.phi_rad = att_euler.phi();
 	pid_control.PID_U.States_i.theta_rad = att_euler.theta();
@@ -212,6 +230,7 @@ MulticopterAttitudeAdvanceControl::run()
 
 			// update the data
 			vehicle_attitude_poll();
+			vehicle_control_mode_poll();
 			sensor_correction_poll();
 			vehicle_attitude_setpoint_poll();
 			att_and_rates_conrtol();
@@ -222,6 +241,7 @@ MulticopterAttitudeAdvanceControl::run()
 
 	orb_unsubscribe(_v_att_sub);
 	orb_unsubscribe(_v_att_sp_sub);
+	orb_unsubscribe(_v_control_mode_sub);
 
 	for (unsigned s = 0; s < _gyro_count; s++) {
 		orb_unsubscribe(_sensor_gyro_sub[s]);

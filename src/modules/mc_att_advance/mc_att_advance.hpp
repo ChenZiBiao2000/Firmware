@@ -20,6 +20,7 @@
 #include <uORB/topics/sensor_correction.h>
 #include <uORB/topics/sensor_gyro.h>
 #include <uORB/topics/actuator_controls.h>
+#include <uORB/topics/vehicle_control_mode.h>
 
 
 extern "C" __EXPORT int mc_att_advance_main(int argc, char *argv[]);
@@ -53,6 +54,7 @@ private:
 	 *Check and update the topic
 	 */
 	void		vehicle_attitude_poll();
+	void 		vehicle_control_mode_poll();
 	void		vehicle_attitude_setpoint_poll();
 	void		sensor_correction_poll();
 	void		att_and_rates_conrtol();
@@ -63,6 +65,7 @@ private:
 	int		_v_att_sub{-1};			/**< vehicle attitude subscription */
 	int		_v_att_sp_sub{-1};		/**< vehicle attitude setpoint subscription */
 	int		_sensor_correction_sub{-1};	/**< sensor thermal correction subscription */
+	int		_v_control_mode_sub {-1};
 	int		_sensor_gyro_sub[MAX_GYRO_COUNT];	/**< gyro data subscription */
 	orb_advert_t	_actuator_controls_pub{nullptr};		/**< rate setpoint publication */
 
@@ -76,6 +79,7 @@ private:
 	struct sensor_correction_s		_sensor_correction {};	/**< sensor thermal corrections */
 	struct sensor_gyro_s			_sensor_gyro {};	/**< gyro data before thermal correctons and ekf bias estimates are applied */
 	struct actuator_controls_s		_actuators {};		/**< actuator controls */
+	struct vehicle_control_mode_s	_v_control_mode {};
 
 	perf_counter_t	_loop_perf;			/**< loop performance counter */
 
