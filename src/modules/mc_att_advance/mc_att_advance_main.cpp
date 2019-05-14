@@ -163,6 +163,7 @@ MulticopterAttitudeAdvanceControl::run()
 	_v_att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
 	_v_att_sp_sub = orb_subscribe(ORB_ID(vehicle_attitude_setpoint));
 	_sensor_correction_sub = orb_subscribe(ORB_ID(sensor_correction));
+	_v_control_mode_sub = orb_subscribe(ORB_ID(vehicle_control_mode));
 
 	// sensor correction topic is not being published regularly and we might have missed the first update.
 	// so copy it once initially so that we have the latest data. In future this will not be needed anymore as the
