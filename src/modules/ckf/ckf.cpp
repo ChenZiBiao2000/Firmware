@@ -50,6 +50,7 @@
 #include <px4_posix.h>
 #include <px4_platform_common/px4_work_queue/ScheduledWorkItem.hpp>
 #include <px4_time.h>
+#include <matrix/math.hpp>
 #include <uORB/Publication.hpp>
 #include <uORB/PublicationMulti.hpp>
 #include <uORB/Subscription.hpp>
@@ -78,6 +79,8 @@
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/wind_estimate.h>
 
+using matrix::Quatf;
+using matrix::Vector3f;
 
 extern "C" __EXPORT int ckf_main(int argc, char *argv[]);
 
@@ -133,7 +136,11 @@ private:
 	// because we can have multiple GPS instances
 	uORB::Subscription _gps_subs[GPS_MAX_RECEIVERS] {{ORB_ID(vehicle_gps_position), 0}, {ORB_ID(vehicle_gps_position), 1}};
 
-
+	// publish the output msg
+	uORB::Publication<estimator_status_s>			_estimator_status_pub{ORB_ID(estimator_status)};
+	uORB::Publication<vehicle_attitude_s>			_att_pub{ORB_ID(vehicle_attitude)};
+	uORB::PublicationData<vehicle_global_position_s>	_vehicle_global_position_pub{ORB_ID(vehicle_global_position)};
+	uORB::PublicationData<vehicle_local_position_s>		_vehicle_local_position_pub{ORB_ID(vehicle_local_position)};
 };
 
 cKF::cKF():
@@ -244,6 +251,8 @@ void cKF::Run()
 
                 setImuValue(&IMU_Data);
 
+		const hrt_abstime now = sensors.timestamp;
+
                 // read mag data
 		if (_magnetometer_sub.updated()) {
                        vehicle_magnetometer_s magnetometer{};
@@ -335,6 +344,61 @@ void cKF::Run()
 		perf_end(_ckf_update_perf);
 		// get the ckf outputs
 		getCkfOutPuts(&ckfOutPutValue);
+
+		// publish estimator status
+		estimator_status_s status;
+		status.timestamp = now;
+		status.n_states = 24;
+		status.pre_flt_fail_innov_heading = false;
+		status.pre_flt_fail_innov_vel_horiz = false;
+		status.pre_flt_fail_innov_vel_vert = false;
+		status.pre_flt_fail_innov_height = false;
+		status.health_flags = 0.0f; // unused
+		status.timeout_flags = 0.0f; // unused
+		_estimator_status_pub.publish(status);
+
+
+		//publish attitude
+		vehicle_attitude_s att;
+		att.timestamp = now;
+		Quatf q = Quatf(1.0f, 0.0f, 0.0f, 0.0f);
+		q.from_axis_angle(Vector3f(ckfOutPutValue.INS_Out.phi,ckfOutPutValue.INS_Out.theta,ckfOutPutValue.INS_Out.psi));
+		q.copyTo(att.q);
+		_att_pub.publish(att);
+
+		// publish global position
+		vehicle_global_position_s global_pos;
+		global_pos.timestamp = now;
+		global_pos.lat = ckfOutPutValue.INS_Out.latitude;
+		global_pos.lon = ckfOutPutValue.INS_Out.longitude;
+		global_pos.alt = ckfOutPutValue.INS_Out.altitude;
+
+		global_pos.vel_n = ckfOutPutValue.INS_Out.velN;
+		global_pos.vel_e = ckfOutPutValue.INS_Out.velE;
+		global_pos.vel_d = ckfOutPutValue.INS_Out.velD;
+
+		global_pos.yaw = ckfOutPutValue.INS_Out.psi;
+		_vehicle_global_position_pub.publish(global_pos);
+
+
+		// generate and publish vehicle's local position data
+		vehicle_local_position_s lpos;
+		lpos.timestamp = now;
+		lpos.xy_valid = true;
+		lpos.z_valid = true;
+
+		lpos.vx = ckfOutPutValue.INS_Out.velN;
+		lpos.vy = ckfOutPutValue.INS_Out.velN;
+		lpos.vz = ckfOutPutValue.INS_Out.velN;
+
+		lpos.ax = ckfOutPutValue.INS_Out.p;
+		lpos.ay = ckfOutPutValue.INS_Out.q;
+		lpos.az = ckfOutPutValue.INS_Out.r;
+
+
+
+
+		_vehicle_local_position_pub.publish(lpos);
 
 	}
 
