@@ -82,6 +82,9 @@
 using matrix::Quatf;
 using matrix::Vector3f;
 
+#define RAD2DEG  (57.2957795131f)
+#define DEG2RAD  (0.01745329252f)
+
 extern "C" __EXPORT int ckf_main(int argc, char *argv[]);
 
 // define max number of GPS receivers supported and 0 base instance used to access virtual 'blended' GPS solution
@@ -116,6 +119,8 @@ private:
 	void getCkfOutPuts(ExternalOutputs_INS_T *output);
 	perf_counter_t _ckf_update_perf;
 
+	uint8_t _arm_last_state = 0;
+
        /*baro data*/
 	float _amov_balt_data_sum = 0.0f;			///< summed pressure altitude readings (m)
 	float _amov_balt_data_pressure = 0.0f;
@@ -124,6 +129,7 @@ private:
 	uint32_t _amov_balt_time_ms_last_used = 0;
 
        /*compass data*/
+	float yawCal = 0.0f;
 	float _amov_mag_data_sum[3] = {};			///< summed magnetometer readings (Gauss)
 	uint64_t _amov_mag_time_sum_ms = 0;		///< summed magnetoemter time stamps (mSec)
 	uint8_t _amov_mag_sample_count = 0;		///< number of magnetometer measurements summed during downsampling
@@ -135,9 +141,14 @@ private:
 	uORB::Subscription _airdata_sub{ORB_ID(vehicle_air_data)};
 	// because we can have multiple GPS instances
 	uORB::Subscription _gps_subs[GPS_MAX_RECEIVERS] {{ORB_ID(vehicle_gps_position), 0}, {ORB_ID(vehicle_gps_position), 1}};
+	uORB::Subscription _status_sub{ORB_ID(vehicle_status)};
+
+	vehicle_status_s		_vehicle_status{};
+	vehicle_global_position_s 	_global_pos{};
+	vehicle_local_position_s 	_lpos{};
 
 	// publish the output msg
-	uORB::Publication<estimator_status_s>			_estimator_status_pub{ORB_ID(estimator_status)};
+	// uORB::Publication<estimator_status_s>			_estimator_status_pub{ORB_ID(estimator_status)};
 	uORB::Publication<vehicle_attitude_s>			_att_pub{ORB_ID(vehicle_attitude)};
 	uORB::PublicationData<vehicle_global_position_s>	_vehicle_global_position_pub{ORB_ID(vehicle_global_position)};
 	uORB::PublicationData<vehicle_local_position_s>		_vehicle_local_position_pub{ORB_ID(vehicle_local_position)};
@@ -238,7 +249,7 @@ void cKF::Run()
 
 	if (_sensors_sub.update(&sensors)) {
 
-		IMU_Bus IMU_Data;
+		IMU_Bus IMU_Data{};
 		/*Update 250 HZ*/
 		IMU_Data.timestamp_ms = sensors.timestamp * 1E-3;
 		IMU_Data.acc_x_mPs2_B = sensors.accelerometer_m_s2[0];
@@ -255,7 +266,7 @@ void cKF::Run()
 
                 // read mag data
 		if (_magnetometer_sub.updated()) {
-                       vehicle_magnetometer_s magnetometer{};
+                       vehicle_magnetometer_s magnetometer;
 			if (_magnetometer_sub.copy(&magnetometer)) {
 	                        /*update the mag data, 100hz*/
 				_amov_mag_time_sum_ms += magnetometer.timestamp / 1000;
@@ -274,6 +285,7 @@ void cKF::Run()
 					amovMagData.mag_z_ga_B = _amov_mag_data_sum[2] * mag_sample_count_inv;
 
 					setCompassValue(&amovMagData);
+					yawCal = atan2(-amovMagData.mag_y_ga_B,amovMagData.mag_x_ga_B);
 
 					_amov_mag_time_ms_last_used = amov_mag_time_ms;
 					_amov_mag_time_sum_ms = 0;
@@ -286,76 +298,92 @@ void cKF::Run()
 
 		}
 
-		vehicle_air_data_s airdata;
-                if (_airdata_sub.copy(&airdata)) {
-                        /*update the baro data, 100hz*/
-	                _amov_balt_time_sum_ms += airdata.timestamp / 1000;
-			_amov_balt_sample_count ++;
-			_amov_balt_data_sum += airdata.baro_alt_meter;
-			_amov_balt_data_pressure += airdata.baro_pressure_pa;
-			uint32_t amov_balt_time_ms = _amov_balt_time_sum_ms / _amov_balt_sample_count;
+		if (_airdata_sub.updated()) {
+			vehicle_air_data_s airdata;
+			if (_airdata_sub.copy(&airdata)) {
+				/*update the baro data, 100hz*/
+				_amov_balt_time_sum_ms += airdata.timestamp / 1000;
+				_amov_balt_sample_count ++;
+				_amov_balt_data_sum += airdata.baro_alt_meter;
+				_amov_balt_data_pressure += airdata.baro_pressure_pa;
+				uint32_t amov_balt_time_ms = _amov_balt_time_sum_ms / _amov_balt_sample_count;
 
-			if (amov_balt_time_ms - _amov_balt_time_ms_last_used >= (uint32_t)10) {
-				// float amov_balt_data_avg = _amov_balt_data_sum/(float)_amov_balt_sample_count;
-				float amov_balt_data_pressure_avg = _amov_balt_data_pressure/(float)_amov_balt_sample_count;
+				if (amov_balt_time_ms - _amov_balt_time_ms_last_used >= (uint32_t)10) {
+					// float amov_balt_data_avg = _amov_balt_data_sum/(float)_amov_balt_sample_count;
+					float amov_balt_data_pressure_avg = _amov_balt_data_pressure/(float)_amov_balt_sample_count;
 
-				MS5611_Bus amovBaroData{};
+					MS5611_Bus amovBaroData{};
 
-				amovBaroData.timestamp_ms   = hrt_absolute_time() * 1E-3;
-				amovBaroData.pressure_pa = amov_balt_data_pressure_avg;
-				amovBaroData.temperature_deg    = airdata.baro_temp_celcius;
+					amovBaroData.timestamp_ms   = hrt_absolute_time() * 1E-3;
+					amovBaroData.pressure_pa = amov_balt_data_pressure_avg;
+					amovBaroData.temperature_deg    = airdata.baro_temp_celcius;
 
-				setBaroValue(&amovBaroData);
+					setBaroValue(&amovBaroData);
 
-				_amov_balt_time_ms_last_used = amov_balt_time_ms;
-				_amov_balt_time_sum_ms = 0;
-				_amov_balt_sample_count = 0;
-				_amov_balt_data_sum = 0.0f;
-				_amov_balt_data_pressure = 0.0;
+					_amov_balt_time_ms_last_used = amov_balt_time_ms;
+					_amov_balt_time_sum_ms = 0;
+					_amov_balt_sample_count = 0;
+					_amov_balt_data_sum = 0.0f;
+					_amov_balt_data_pressure = 0.0;
+				}
 			}
 		}
 
-		vehicle_gps_position_s gps;
-		if (_gps_subs[0].copy(&gps)) {
-			/*amov record gps info 10hz*/
-			uBlox_PVT_Bus amovGpsData{};
-			amovGpsData.timestamp_ms = hrt_absolute_time() * 1E-3;
-			amovGpsData.valid   = (gps.fix_type > 3)&& (gps.satellites_used > 7);
-			amovGpsData.fixType = gps.fix_type;
-			amovGpsData.flags   = (gps.fix_type > 3)&& (gps.satellites_used > 7) && (gps.noise_per_ms < 10);
-			amovGpsData.numSV   = gps.satellites_used;
-			amovGpsData.lon     = gps.lon;
-			amovGpsData.lat     = gps.lat;
-			amovGpsData.height  = gps.alt;
-			amovGpsData.velN    = gps.vel_n_m_s;
-			amovGpsData.velE    = gps.vel_e_m_s;
-			amovGpsData.velD    = gps.vel_d_m_s;
-			amovGpsData.pDOP    = gps.hdop;
-			amovGpsData.hAcc    = gps.eph * 1000.0f;
-			amovGpsData.vAcc    = gps.epv * 1000.0f;
-			amovGpsData.sAcc    = gps.s_variance_m_s * 1000.0f;
+		// read gps1 data if available
+		bool gps1_updated = _gps_subs[0].updated();
+		static vehicle_gps_position_s gps{};
+		if (gps1_updated)
+		{
+			if (_gps_subs[0].copy(&gps)) {
+				/*amov record gps info 10hz*/
+				uBlox_PVT_Bus amovGpsData{};
+				amovGpsData.timestamp_ms = hrt_absolute_time() * 1E-3;
+				amovGpsData.valid   = (gps.fix_type > 3)&& (gps.satellites_used > 7);
+				amovGpsData.fixType = gps.fix_type;
+				amovGpsData.flags   = (gps.fix_type > 3)&& (gps.satellites_used > 7) && (gps.noise_per_ms < 10);
+				amovGpsData.numSV   = gps.satellites_used;
+				amovGpsData.lon     = gps.lon;
+				amovGpsData.lat     = gps.lat;
+				amovGpsData.height  = gps.alt;
+				amovGpsData.velN    = gps.vel_n_m_s;
+				amovGpsData.velE    = gps.vel_e_m_s;
+				amovGpsData.velD    = gps.vel_d_m_s;
+				amovGpsData.pDOP    = gps.hdop;
+				amovGpsData.hAcc    = gps.eph * 1000.0f;
+				amovGpsData.vAcc    = gps.epv * 1000.0f;
+				amovGpsData.sAcc    = gps.s_variance_m_s * 1000.0f;
+				setGpsValue(&amovGpsData);
 
-			setGpsValue(&amovGpsData);
+			}
+
 		}
 
 		// run the cKF update and output
 		perf_begin(_ckf_update_perf);
 		ckfInsFilter.step();
 		perf_end(_ckf_update_perf);
+
 		// get the ckf outputs
 		getCkfOutPuts(&ckfOutPutValue);
+		ckfOutPutValue.INS_Out.psi = yawCal;
 
-		// publish estimator status
-		estimator_status_s status;
-		status.timestamp = now;
-		status.n_states = 24;
-		status.pre_flt_fail_innov_heading = false;
-		status.pre_flt_fail_innov_vel_horiz = false;
-		status.pre_flt_fail_innov_vel_vert = false;
-		status.pre_flt_fail_innov_height = false;
-		status.health_flags = 0.0f; // unused
-		status.timeout_flags = 0.0f; // unused
-		_estimator_status_pub.publish(status);
+		bool status_updated = _status_sub.updated();
+		if (status_updated)
+		{
+			_status_sub.copy(&_vehicle_status);
+		}
+
+		// // publish estimator status
+		// estimator_status_s status;
+		// status.timestamp = now;
+		// status.n_states = 24;
+		// status.pre_flt_fail_innov_heading = false;
+		// status.pre_flt_fail_innov_vel_horiz = false;
+		// status.pre_flt_fail_innov_vel_vert = false;
+		// status.pre_flt_fail_innov_height = false;
+		// status.health_flags = 0.0f; // unused
+		// status.timeout_flags = 0.0f; // unused
+		// _estimator_status_pub.publish(status);
 
 
 		//publish attitude
@@ -367,38 +395,61 @@ void cKF::Run()
 		_att_pub.publish(att);
 
 		// publish global position
-		vehicle_global_position_s global_pos;
-		global_pos.timestamp = now;
-		global_pos.lat = ckfOutPutValue.INS_Out.latitude;
-		global_pos.lon = ckfOutPutValue.INS_Out.longitude;
-		global_pos.alt = ckfOutPutValue.INS_Out.altitude;
+		_global_pos.timestamp = now;
+		_global_pos.lat = ckfOutPutValue.INS_Out.latitude * RAD2DEG;
+		_global_pos.lon = ckfOutPutValue.INS_Out.longitude * RAD2DEG;
+		_global_pos.alt = ckfOutPutValue.INS_Out.altitude;
 
-		global_pos.vel_n = ckfOutPutValue.INS_Out.velN;
-		global_pos.vel_e = ckfOutPutValue.INS_Out.velE;
-		global_pos.vel_d = ckfOutPutValue.INS_Out.velD;
+		_global_pos.vel_n = ckfOutPutValue.INS_Out.velN;
+		_global_pos.vel_e = ckfOutPutValue.INS_Out.velE;
+		_global_pos.vel_d = -ckfOutPutValue.INS_Out.velD;
+		_global_pos.yaw = ckfOutPutValue.INS_Out.psi;
+		_global_pos.eph = gps.eph;
+		_global_pos.epv = gps.epv;
 
-		global_pos.yaw = ckfOutPutValue.INS_Out.psi;
-		_vehicle_global_position_pub.publish(global_pos);
+		_vehicle_global_position_pub.publish(_global_pos);
 
 
 		// generate and publish vehicle's local position data
-		vehicle_local_position_s lpos;
-		lpos.timestamp = now;
-		lpos.xy_valid = true;
-		lpos.z_valid = true;
+		_lpos.timestamp = now;
+		_lpos.xy_valid = (ckfOutPutValue.INS_Out.flags & (0x1 << 4));
+		_lpos.z_valid = (ckfOutPutValue.INS_Out.flags & (0x1 << 5));
+		_lpos.v_xy_valid = (ckfOutPutValue.INS_Out.flags & (0x1 << 3));
+		_lpos.v_z_valid = (ckfOutPutValue.INS_Out.flags & (0x1 << 5));
 
-		lpos.vx = ckfOutPutValue.INS_Out.velN;
-		lpos.vy = ckfOutPutValue.INS_Out.velN;
-		lpos.vz = ckfOutPutValue.INS_Out.velN;
+		_lpos.x = ckfOutPutValue.INS_Out.x_R_m;
+		_lpos.y = ckfOutPutValue.INS_Out.y_R_m;
+		_lpos.z = -ckfOutPutValue.INS_Out.h_R_m;
 
-		lpos.ax = ckfOutPutValue.INS_Out.p;
-		lpos.ay = ckfOutPutValue.INS_Out.q;
-		lpos.az = ckfOutPutValue.INS_Out.r;
+		_lpos.vx = ckfOutPutValue.INS_Out.velN;
+		_lpos.vy = ckfOutPutValue.INS_Out.velE;
+		_lpos.vz = -ckfOutPutValue.INS_Out.velD;
+		_lpos.z_deriv = NAN;
+
+		_lpos.ax = ckfOutPutValue.INS_Out.sfor_x;
+		_lpos.ay = ckfOutPutValue.INS_Out.sfor_y;
+		_lpos.az = ckfOutPutValue.INS_Out.sfor_z - 9.8f;
+
+		_lpos.yaw = ckfOutPutValue.INS_Out.psi;
+		_lpos.xy_global = (ckfOutPutValue.INS_Out.flags & (0x1 << 4));
+		_lpos.z_global = (ckfOutPutValue.INS_Out.flags & (0x1 << 5));
+			// record the last status on groud
+		if ((_vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED)
+		&& (_arm_last_state == vehicle_status_s::ARMING_STATE_INIT))
+		{
+			_lpos.ref_timestamp = now;
+			_lpos.ref_lat = ckfOutPutValue.INS_Out.latitude * RAD2DEG;
+			_lpos.ref_lon = ckfOutPutValue.INS_Out.longitude * RAD2DEG;
+			_lpos.ref_alt = gps.alt;
+		}
+		_lpos.eph = gps.eph;
+		_lpos.epv = gps.epv;
 
 
-
-
-		_vehicle_local_position_pub.publish(lpos);
+		_vehicle_local_position_pub.publish(_lpos);
+	// printf("_lpos.xy_valid:%d,_lpos.z_valid:%d\n",_lpos.xy_valid,_lpos.z_valid);
+	// printf("_lpos.lat:%f lon:%f gps lat:%d lon:%d \n",(double)_global_pos.lat,(double)_global_pos.lon,gps.lat,gps.lon);
+		_arm_last_state = _vehicle_status.arming_state;
 
 	}
 

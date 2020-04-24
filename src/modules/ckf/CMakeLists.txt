@@ -31,8 +31,6 @@
 #
 #############################################################################
 
-# add_subdirectory(Utility)
-
 px4_add_module(
 	MODULE modules__ckf
 	MAIN ckf
@@ -40,14 +38,8 @@ px4_add_module(
 	     -Wno-double-promotion
 	     -Wno-float-equal
 	     -Wno-comment
-	STACK_MAX 2400
+	STACK_MAX 3600
 	SRCS
 		ckf.cpp
 		lib/INS.cpp
-	DEPENDS
-		# git_ecl
-		# ecl_EKF
-		# ecl_geo
-		# perf
-		# Ekf2Utility
 	)

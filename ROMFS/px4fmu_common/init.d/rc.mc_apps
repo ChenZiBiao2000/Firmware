@@ -29,19 +29,24 @@ then
 		reboot
 	fi
 else
-	#
+
 	# Q estimator (attitude estimation only)
 	#
 	if param compare SYS_MC_EST_GROUP 3
 	then
 		attitude_estimator_q start
+	else if param compare SYS_MC_EST_GROUP 4
+	then
+		ckf start
+		echo "[init] ckf start"
 	else
 		#
 		# EKF2
 		#
-		param set SYS_MC_EST_GROUP 2
+		# param set SYS_MC_EST_GROUP 2
 		ekf2 start
-		ckf start
+		echo "[init] ekf start"
+	fi
 	fi
 fi
 
