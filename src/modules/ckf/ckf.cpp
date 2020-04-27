@@ -129,7 +129,6 @@ private:
 	uint32_t _amov_balt_time_ms_last_used = 0;
 
        /*compass data*/
-	float yawCal = 0.0f;
 	float _amov_mag_data_sum[3] = {};			///< summed magnetometer readings (Gauss)
 	uint64_t _amov_mag_time_sum_ms = 0;		///< summed magnetoemter time stamps (mSec)
 	uint8_t _amov_mag_sample_count = 0;		///< number of magnetometer measurements summed during downsampling
@@ -285,7 +284,6 @@ void cKF::Run()
 					amovMagData.mag_z_ga_B = _amov_mag_data_sum[2] * mag_sample_count_inv;
 
 					setCompassValue(&amovMagData);
-					yawCal = atan2(-amovMagData.mag_y_ga_B,amovMagData.mag_x_ga_B);
 
 					_amov_mag_time_ms_last_used = amov_mag_time_ms;
 					_amov_mag_time_sum_ms = 0;
@@ -365,7 +363,6 @@ void cKF::Run()
 
 		// get the ckf outputs
 		getCkfOutPuts(&ckfOutPutValue);
-		ckfOutPutValue.INS_Out.psi = yawCal;
 
 		bool status_updated = _status_sub.updated();
 		if (status_updated)
