@@ -81,6 +81,8 @@
 
 using matrix::Quatf;
 using matrix::Vector3f;
+using matrix::AxisAnglef;
+using matrix::Eulerf;
 
 #define RAD2DEG  (57.2957795131f)
 #define DEG2RAD  (0.01745329252f)
@@ -386,9 +388,10 @@ void cKF::Run()
 		//publish attitude
 		vehicle_attitude_s att;
 		att.timestamp = now;
-		Quatf q = Quatf(1.0f, 0.0f, 0.0f, 0.0f);
-		q.from_axis_angle(Vector3f(ckfOutPutValue.INS_Out.phi,ckfOutPutValue.INS_Out.theta,ckfOutPutValue.INS_Out.psi));
-		q.copyTo(att.q);
+		Quatf q_sp_rpy(1, 0, 0, 0);
+		Eulerf euler_att(ckfOutPutValue.INS_Out.phi, ckfOutPutValue.INS_Out.theta, ckfOutPutValue.INS_Out.psi);
+		q_sp_rpy = Quatf(euler_att);
+		q_sp_rpy.copyTo(att.q);
 		_att_pub.publish(att);
 
 		// publish global position
@@ -444,8 +447,6 @@ void cKF::Run()
 
 
 		_vehicle_local_position_pub.publish(_lpos);
-	// printf("_lpos.xy_valid:%d,_lpos.z_valid:%d\n",_lpos.xy_valid,_lpos.z_valid);
-	// printf("_lpos.lat:%f lon:%f gps lat:%d lon:%d \n",(double)_global_pos.lat,(double)_global_pos.lon,gps.lat,gps.lon);
 		_arm_last_state = _vehicle_status.arming_state;
 
 	}
